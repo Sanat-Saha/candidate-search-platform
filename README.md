@@ -4,14 +4,16 @@ A Streamlit web application for searching and filtering candidates for junior an
 
 ## ✨ Features
 
+- **Database Selection**: Switch between different datasets (Original: 10 resumes, Large Dataset: scaled version)
 - **Advanced Filtering**: Filter candidates by geographic market, investment approach, sectors, years of experience, skills, and certifications
 - **Interactive Visualizations**: View candidate distributions with charts including:
   - Geographic market distribution (pie chart)
   - Investment approach distribution (bar chart)
   - Years of experience histogram
   - Top sectors analysis
-- **Candidate Search**: Search for specific skills across all resumes
-- **Detailed Candidate View**: View comprehensive candidate profiles including education, work experience, skills, and certifications
+- **Pagination**: Navigate through large result sets with customizable page sizes (25, 50, 100 results per page)
+- **Detailed Candidate View**: View comprehensive candidate profiles including education, work experience, skills, sectors, and certifications
+- **Resume Download**: Download original resume files (PDF, DOCX, DOC) directly from candidate details
 - **Export Functionality**: Export filtered results to CSV format
 - **Real-time Statistics**: View total candidates, filtered results, and key metrics
 
@@ -20,7 +22,10 @@ A Streamlit web application for searching and filtering candidates for junior an
 ### Prerequisites
 
 - Python 3.11
-- SQLite database file (`parsed_resumes.db`) with parsed resume data
+- SQLite database files:
+  - `parsed_resumes.db` - Original dataset (10 resumes)
+  - `parsed_resumes_large.db` - Large dataset (scaled version)
+- `resumes/` folder containing original resume files (PDF, DOCX, DOC) for download functionality
 
 ### Installation
 
@@ -37,7 +42,10 @@ pip install -r requirements.txt
 
 ### Running Locally
 
-1. Ensure the `parsed_resumes.db` file is in the same directory as `streamlit_app.py`
+1. Ensure the following files are in the same directory as `streamlit_app.py`:
+   - `parsed_resumes.db` - Original dataset (10 resumes)
+   - `parsed_resumes_large.db` - Large dataset (scaled version)
+   - `resumes/` folder containing original resume files
 
 2. Run the Streamlit app:
 ```bash
@@ -67,10 +75,10 @@ git push origin main
 
 4. Set the main file path to `streamlit_app.py`
 
-5. **Important**: You'll need to include the `parsed_resumes.db` file in your repository for the app to work. Make sure it's committed to GitHub:
+5. **Important**: You'll need to include the database files and resumes folder in your repository for the app to work. Make sure they're committed to GitHub:
 ```bash
-git add parsed_resumes.db
-git commit -m "Add database file"
+git add parsed_resumes.db parsed_resumes_large.db resumes/
+git commit -m "Add database files and resumes folder"
 git push
 ```
 
@@ -78,19 +86,26 @@ git push
 
 ### Database Setup Note
 
-The application requires a SQLite database file (`parsed_resumes.db`) containing parsed resume data. The database should have a `resumes` table with the following structure:
+The application requires SQLite database files containing parsed resume data:
+
+- `parsed_resumes.db` - Original dataset with 10 resumes
+- `parsed_resumes_large.db` - Large dataset with scaled data
+
+Both databases should have a `resumes` table with the following structure:
 - Standard fields: `name`, `location`, `email`, `phone`, `geographic_market`, `investment_approach`, `years_experience`, `current_role`, `current_company`, `filename`
 - JSON fields: `education`, `work_experience`, `skills`, `sectors`, `certifications`, `languages`
 
-If you need to generate this database, run your resume parsing notebook first to create the `parsed_resumes.db` file.
+Additionally, a `resumes/` folder should contain the original resume files (PDF, DOCX, DOC) that correspond to the `filename` field in the database for the download functionality.
+
+If you need to generate these databases, run your resume parsing notebook first to create the database files and ensure the resume files are in the `resumes/` folder.
 
 ## 📦 Dependencies
 
-- `streamlit==1.53.0` - Web framework
-- `pandas==2.3.3` - Data manipulation
-- `plotly==6.5.2` - Interactive visualizations
+- `streamlit==1.53.0` - Web framework for the interactive application
+- `pandas==2.3.3` - Data manipulation and analysis
+- `plotly==6.5.2` - Interactive visualizations and charts
 
-All dependencies are listed in `requirements.txt`.
+All dependencies are listed in `requirements.txt`. The application also uses Python's built-in `sqlite3`, `json`, and `pathlib` modules.
 
 ---
 
