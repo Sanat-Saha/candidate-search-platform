@@ -286,7 +286,7 @@ if 'current_page' not in st.session_state:
     st.session_state.current_page = 0
 
 # Reset to first page when filters change (track filter state)
-filter_key = f"{st.session_state.selected_database}_{selected_market}_{selected_approach}_{exp_range}_{selected_skills}_{selected_sectors}_{selected_certs}_{page_size}"
+filter_key = f"{st.session_state.selected_database}_{selected_market}_{selected_approach}_{exp_range}_{selected_skills}_{selected_sectors}_{selected_certs}_{selected_degrees}_{selected_roles}_{page_size}"
 if 'last_filter_key' not in st.session_state:
     st.session_state.last_filter_key = filter_key
 
@@ -451,10 +451,11 @@ if total_filtered_count > 0:
 # Create display DataFrame with formatted columns
 display_df = create_display_dataframe(filtered_df, include_full_data=True)
 
-# Display filtered results
-results_display_df = display_df.drop(columns=["_full_data"])
 
 if len(display_df) > 0:
+    # Display filtered results
+    results_display_df = display_df.drop(columns=["_full_data"])
+    
     st.dataframe(
         results_display_df,
         use_container_width=True,

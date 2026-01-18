@@ -77,5 +77,3 @@ If you need to generate these databases, run your resume parsing notebook first 
 - `streamlit==1.53.0` - Web framework for the interactive application
 - `pandas==2.3.3` - Data manipulation and analysis
 - `plotly==6.5.2` - Interactive visualizations and charts
-
-All dependencies are listed in `requirements.txt`. The application also uses Python's built-in `sqlite3`, `json`, and `pathlib` modules.
