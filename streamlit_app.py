@@ -67,7 +67,7 @@ def execute_db_query(db_name, query_func, default_return):
         return default_return
 
 # Get unique values for filters without loading all data
-@st.cache_data(ttl=300)  # Cache for 5 minutes
+@st.cache_data # Cache for future calls
 def get_unique_values(column_name, db_name):
     """Get unique values for a specific column from the database."""
     def query_func(conn):
@@ -78,7 +78,7 @@ def get_unique_values(column_name, db_name):
     return execute_db_query(db_name, query_func, [])
 
 # Get total count and statistics without loading all data
-@st.cache_data(ttl=300)
+@st.cache_data
 def get_database_stats(db_name):
     """Get database statistics without loading all data."""
     def query_func(conn):
@@ -95,7 +95,7 @@ def get_database_stats(db_name):
     return execute_db_query(db_name, query_func, {"total_count": 0, "avg_exp": 0, "unique_markets": 0})
 
 # Get min/max experience range
-@st.cache_data(ttl=300)
+@st.cache_data
 def get_experience_range(db_name):
     """Get min and max years of experience from database."""
     def query_func(conn):
@@ -107,8 +107,8 @@ def get_experience_range(db_name):
     
     return execute_db_query(db_name, query_func, (0, 0))
 
-# Get all unique sectors and certifications (requires parsing JSON)
-@st.cache_data(ttl=300)
+# Get all unique values for list fields (requires parsing JSON)
+@st.cache_data
 def get_json_field_values(field_name, db_name):
     """Get all unique values from a JSON field (like sectors, certifications)."""
     def query_func(conn):
@@ -143,38 +143,46 @@ def build_json_field_filter(field_name, selected_values, where_clause, params):
     return where_clause
 
 # Build SQL query for efficient filtering with pagination
-def query_resumes(geographic_market=None, investment_approach=None, 
+def query_resumes(geographic_market=None, investment_approach=None,
                    min_exp=None, max_exp=None,
-                   selected_skills=None, selected_sectors=None, selected_certs=None,
+                   selected_skills=None, selected_sectors=None, selected_degrees=None,
+                   selected_roles=None, selected_certs=None,
                    limit=50, offset=0):
     """Query resumes from SQLite database with filters and pagination."""
     conn = get_db_connection()
     if conn is None:
         return pd.DataFrame(), 0
-    
+
     # Build WHERE clause conditions
     where_clause = "WHERE 1=1"
     params = []
-    
+
     if geographic_market and geographic_market != "All":
         where_clause += " AND geographic_market = ?"
         params.append(geographic_market)
-    
+
     if investment_approach and investment_approach != "All":
         where_clause += " AND investment_approach = ?"
         params.append(investment_approach)
-    
-    if min_exp is not None:
+
+    if min_exp:
         where_clause += " AND years_experience >= ?"
         params.append(min_exp)
-    
-    if max_exp is not None:
+
+    if max_exp:
         where_clause += " AND years_experience <= ?"
         params.append(max_exp)
-    
+
+    # Filter by current role
+    if selected_roles:
+        placeholders = ','.join(['?'] * len(selected_roles))
+        where_clause += f" AND current_role IN ({placeholders})"
+        params.extend(selected_roles)
+
     # SQL filtering for JSON fields (skills, sectors, certifications)
     where_clause = build_json_field_filter("skills", selected_skills, where_clause, params)
     where_clause = build_json_field_filter("sectors", selected_sectors, where_clause, params)
+    where_clause = build_json_field_filter("degrees", selected_degrees, where_clause, params)
     where_clause = build_json_field_filter("certifications", selected_certs, where_clause, params)
     
     # Get total count before pagination
@@ -188,8 +196,8 @@ def query_resumes(geographic_market=None, investment_approach=None,
     
     filtered_df = pd.read_sql_query(query, conn, params=query_params)
     
-    # Convert JSON strings back to Python objects
-    json_columns = ['education', 'work_experience', 'skills', 'sectors', 'certifications', 'languages']
+    # Convert JSON strings/lists back to Python objects
+    json_columns = ['education', 'work_experience', 'skills', 'sectors', 'degrees', 'certifications']
     for col in json_columns:
         if col in filtered_df.columns:
             filtered_df[col] = filtered_df[col].apply(lambda x: json.loads(x) if pd.notna(x) and x != '' and x != '[]' else [])
@@ -214,12 +222,13 @@ def create_display_dataframe(filtered_df, include_full_data=True):
             "Name": row.get("name", "Unknown"),
             "Location": row.get("location", ""),
             "Geographic Market": row.get("geographic_market", ""),
-            "Years Experience": row.get("years_experience", 0),
+            "Years Experience": row.get("years_experience", "N/A"),
             "Current Role": row.get("current_role", ""),
             "Current Company": row.get("current_company", ""),
             "Investment Approach": row.get("investment_approach", ""),
             "Skills": format_list_field(row.get("skills", [])),
             "Sectors": format_list_field(row.get("sectors", [])),
+            "Degrees": format_list_field(row.get("degrees", [])),
             "Certifications": format_list_field(row.get("certifications", [])),
             "Email": row.get("email", ""),
             "Phone": row.get("phone", ""),
@@ -245,11 +254,19 @@ selected_approach = st.sidebar.selectbox("Investment Approach", investment_appro
 all_sectors = get_json_field_values("sectors", st.session_state.selected_database)
 selected_sectors = st.sidebar.multiselect("Sectors", all_sectors)
 
-# Skills filter (multi-select, similar to sectors and certifications)
+# Skills filter (multi-select)
 all_skills = get_json_field_values("skills", st.session_state.selected_database)
 selected_skills = st.sidebar.multiselect("Skills", all_skills)
 
-# Certifications filter
+# Degrees filter (multi-select)
+all_degrees = get_json_field_values("degrees", st.session_state.selected_database)
+selected_degrees = st.sidebar.multiselect("Degrees", all_degrees)
+
+# Roles filter (multi-select)
+all_roles = get_unique_values("current_role", st.session_state.selected_database)
+selected_roles = st.sidebar.multiselect("Roles", all_roles)
+
+# Certifications filter (multi-select)
 all_certs = get_json_field_values("certifications", st.session_state.selected_database)
 selected_certs = st.sidebar.multiselect("Certifications", all_certs)
 
@@ -285,6 +302,8 @@ filtered_df, total_filtered_count = query_resumes(
     max_exp=exp_range[1],
     selected_skills=selected_skills if selected_skills else None,
     selected_sectors=selected_sectors if selected_sectors else None,
+    selected_degrees=selected_degrees if selected_degrees else None,
+    selected_roles=selected_roles if selected_roles else None,
     selected_certs=selected_certs if selected_certs else None,
     limit=page_size,
     offset=st.session_state.current_page * page_size
@@ -303,7 +322,7 @@ elif st.session_state.current_page >= total_pages and total_pages > 0:
 st.title("🔍 Candidate Search Platform")
 st.markdown("**Search and filter candidates for junior analyst positions**")
 
-# Statistics
+# Overall Statistics
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Filtered Candidates", total_filtered_count)
 col2.metric("Total Candidates", db_stats["total_count"])
@@ -319,6 +338,8 @@ viz_df, _ = query_resumes(
     max_exp=exp_range[1],
     selected_skills=selected_skills if selected_skills else None,
     selected_sectors=selected_sectors if selected_sectors else None,
+    selected_degrees=selected_degrees if selected_degrees else None,
+    selected_roles=selected_roles if selected_roles else None,
     selected_certs=selected_certs if selected_certs else None,
     limit=10000,  # Limit to 10k for visualization performance
     offset=0
@@ -357,11 +378,10 @@ with viz_col2:
             )
             st.plotly_chart(fig_approach, use_container_width=True)
 
-# Experience distribution
-st.subheader("Experience Distribution")
-exp_col1, exp_col2 = st.columns(2)
 
-with exp_col1:
+viz_col3, viz_col4 = st.columns(2)
+
+with viz_col3:
     if not viz_df.empty:
         fig_exp = px.histogram(
             viz_df,
@@ -372,28 +392,52 @@ with exp_col1:
         )
         st.plotly_chart(fig_exp, use_container_width=True)
 
-with exp_col2:
+with viz_col4:
     # Top sectors
     if not viz_df.empty:
-        sector_counts = {}
-        for sectors_list in viz_df["sectors"]:
-            if isinstance(sectors_list, list):
-                for sector in sectors_list:
-                    if sector.strip():
-                        sector_counts[sector.strip()] = sector_counts.get(sector.strip(), 0) + 1
-        
-        if sector_counts:
-            top_sectors = pd.DataFrame(list(sector_counts.items()), columns=["Sector", "Count"])
-            top_sectors = top_sectors.sort_values("Count", ascending=False).head(10)
+        sector_counts = viz_df["sectors"].explode().value_counts()
+        if len(sector_counts) > 0:
+            top_sectors = sector_counts.sort_values(ascending=False).head(10)
             fig_sectors = px.bar(
-                top_sectors,
-                x="Count",
-                y="Sector",
+                x=top_sectors.values,
+                y=top_sectors.index,
                 orientation='h',
                 title="Top 10 Sectors",
                 labels={"Count": "Number of Candidates"}
             )
             st.plotly_chart(fig_sectors, use_container_width=True)
+
+
+viz_col5, viz_col6 = st.columns(2)
+
+with viz_col5:
+    if not viz_df.empty:
+        skill_counts = viz_df["skills"].explode().value_counts()
+        if len(skill_counts) > 0:
+            top_skills = skill_counts.sort_values(ascending=False).head(10)
+            fig_skills = px.bar(
+                x=top_skills.values,
+                y=top_skills.index,
+                orientation='h',
+                title="Top 10 Skills",
+                labels={"Count": "Number of Candidates"}
+            )
+            st.plotly_chart(fig_skills, use_container_width=True)
+
+with viz_col6:
+    # Top sectors
+    if not viz_df.empty:
+        roles_counts = viz_df["current_role"].value_counts()
+        if len(roles_counts) > 0:
+            top_roles = roles_counts.sort_values(ascending=False).head(10)
+            fig_roles = px.bar(
+                x=top_roles.values,
+                y=top_roles.index,
+                orientation='h',
+                title="Top 10 Roles/Titles",
+                labels={"Count": "Number of Candidates"}
+            )
+            st.plotly_chart(fig_roles, use_container_width=True)
 
 # Results table
 st.header("👥 Candidate Results")
@@ -474,11 +518,12 @@ if len(display_df) > 0:
         
         with detail_col1:
             st.markdown(f"### {selected_resume.get('name', 'Unknown')}")
+            st.markdown(f"**Professional Summary:** {selected_resume.get('professional_summary', 'N/A')}")
             st.markdown(f"**Location:** {selected_resume.get('location', 'N/A')}")
             st.markdown(f"**Geographic Market:** {selected_resume.get('geographic_market', 'N/A')}")
             st.markdown(f"**Email:** {selected_resume.get('email', 'N/A')}")
             st.markdown(f"**Phone:** {selected_resume.get('phone', 'N/A')}")
-            st.markdown(f"**Years Experience:** {selected_resume.get('years_experience', 0)}")
+            st.markdown(f"**Years Experience:** {selected_resume.get('years_experience', 'N/A')}")
             st.markdown(f"**Investment Approach:** {selected_resume.get('investment_approach', 'N/A')}")
             st.markdown(f"**Current Role:** {selected_resume.get('current_role', 'N/A')}")
             st.markdown(f"**Current Company:** {selected_resume.get('current_company', 'N/A')}")
@@ -488,10 +533,11 @@ if len(display_df) > 0:
             list_fields = [
                 ("Skills", "skills"),
                 ("Sectors", "sectors"),
+                ("Degress", "degrees"),
                 ("Certifications", "certifications")
             ]
             for field_title, field_key in list_fields:
-                st.markdown(f"### {field_title}")
+                st.markdown(f"**{field_title}**")
                 field_value = selected_resume.get(field_key, [])
                 if isinstance(field_value, list) and field_value:
                     st.markdown(", ".join(field_value))
@@ -542,6 +588,8 @@ if st.sidebar.button("Export All Filtered Results to CSV"):
         max_exp=exp_range[1],
         selected_skills=selected_skills if selected_skills else None,
         selected_sectors=selected_sectors if selected_sectors else None,
+        selected_degrees=selected_degrees if selected_degrees else None,
+        selected_roles=selected_roles if selected_roles else None,
         selected_certs=selected_certs if selected_certs else None,
         limit=1000000,  # Large limit to get all results
         offset=0
